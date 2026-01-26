@@ -138,7 +138,22 @@ class CaptioningRNN:
         #                                                                          #
         # You also don't have to implement the backward pass.                      #
         ############################################################################
-        # 
+        # Initial hidden state
+        h0 = affine_forward(features, W_proj, b_proj)
+        # Word embedding
+        x_embed = word_embedding_forward(captions_in, W_embed)
+
+        # Forward pass through RNN/LSTM
+        if self.cell_type == "rnn":
+            h = rnn_forward(x_embed, h0, Wx, Wh, b)
+        else:
+            h = lstm_forward(x_embed, h0, Wx, Wh, b)
+        
+        # Compute scores
+        scores = temporal_affine_forward(h, W_vocab, b_vocab)
+        # Compute loss
+        captions_out = captions_out.type(torch.long)
+        loss = temporal_softmax_loss(scores, captions_out, mask)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -202,7 +217,26 @@ class CaptioningRNN:
         # NOTE: we are still working over minibatches in this function. Also if   #
         # you are using an LSTM, initialize the first cell state to zeros.        #
         ###########################################################################
-        # 
+        h0 = affine_forward(features, W_proj, b_proj)
+        prev_h = h0
+        prev_c = torch.zeros_like(h0)
+        
+        cur_word = torch.full((N,), self._start, dtype=torch.long, device=features.device)
+        for t in range(max_length):
+            # Embed the current word
+            x_embed = word_embedding_forward(cur_word, W_embed)
+            # RNN/LSTM step
+            if self.cell_type == 'rnn':
+                h_t = rnn_step_forward(x_embed, prev_h, Wx, Wh, b)
+            else:
+                h_t, c_t = lstm_step_forward(x_embed, prev_h, prev_c, Wx, Wh, b)
+                prev_c = c_t
+            prev_h = h_t
+            # compute scores
+            scores = affine_forward(h_t, W_vocab, b_vocab)
+            # select the highest
+            cur_word = torch.argmax(scores, dim=1)
+            captions[:, t] = cur_word
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
